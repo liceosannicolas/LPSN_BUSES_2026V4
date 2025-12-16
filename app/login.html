@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <title>Login • Transporte Escolar</title>
+  <link rel="stylesheet" href="../assets/css/styles.css"/>
+</head>
+<body>
+
+<div class="topbar">
+  <div class="topbar-inner">
+    <div class="brand">
+      <div class="logo"></div>
+      <div class="brand-title">
+        <strong>🔐 Login Digitadores</strong>
+        <small>Transporte Escolar • Sync oficial</small>
+      </div>
+    </div>
+    <div class="controls">
+      <a class="btn ghost" href="../index.html">⬅️ Volver</a>
+      <button class="btn" onclick="TE.speakAll()">🗣️</button>
+      <button class="btn" onclick="TE.toggleTheme()">🌓</button>
+      <button class="btn" onclick="TE.toggleContrast()">🌗</button>
+      <button class="btn" onclick="TE.fontUp()">A+</button>
+      <button class="btn" onclick="TE.fontDown()">A−</button>
+      <a class="btn" href="../app/settings.html">⚙️ Sync</a>
+    </div>
+  </div>
+</div>
+
+  <div class="container">
+    <div class="two">
+      <div class="card">
+        <h3>👤 Ingreso</h3>
+        <p class="muted">Acceso para digitadores autorizados. La sincronización (Sync) debe estar configurada en ⚙️.</p>
+        <div style="height:12px"></div>
+        <label class="muted">Correo</label>
+        <input class="input" id="email" placeholder="nombre@liceosannicolas.cl"/>
+        <div style="height:10px"></div>
+        <label class="muted">Clave</label>
+        <input class="input" id="pass" type="password" placeholder="Buses2026"/>
+        <div style="height:12px"></div>
+        <button class="btn primary" id="btnLogin">✅ Entrar</button>
+        <div style="height:10px"></div>
+        <span class="badge">Permitidos: belenacuna / franciscopinto / echeverri</span>
+      </div>
+      <div class="card">
+        <h3>⚙️ Primero: configura Sync</h3>
+        <p class="muted">Pega la URL del Web App de Apps Script y tu API key.</p>
+        <div style="height:10px"></div>
+        <a class="btn" href="settings.html">⚙️ Abrir configuración Sync</a>
+        <div style="height:10px"></div>
+        <a class="btn" href="../tools/importer_sync.html">📥 Cargar nómina (admin)</a>
+      </div>
+    </div>
+  </div>
+  <div id="toast" class="toast"><strong>Info</strong> — <span></span></div>
+  <script src="../assets/js/common.js"></script>
+  <script src="../assets/js/auth.js"></script>
+  <script>
+    document.getElementById("btnLogin").onclick = () => {
+      const email = document.getElementById("email").value;
+      const pass = document.getElementById("pass").value;
+      const r = TE_AUTH.login(email, pass);
+      if(!r.ok) return TE.toast(r.msg, "err");
+      TE.toast("Ingreso exitoso.", "ok");
+      setTimeout(()=>location.href="dashboard.html", 350);
+    };
+  </script>
+</body>
+</html>

@@ -1,0 +1,125 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <title>Importar Nómina (Sync)</title>
+  <link rel="stylesheet" href="../assets/css/styles.css"/>
+</head>
+<body>
+
+<div class="topbar">
+  <div class="topbar-inner">
+    <div class="brand">
+      <div class="logo"></div>
+      <div class="brand-title">
+        <strong>📥 Cargar Nómina (Admin)</strong>
+        <small>Transporte Escolar • Sync oficial</small>
+      </div>
+    </div>
+    <div class="controls">
+      <a class="btn ghost" href="../index.html">⬅️ Volver</a>
+      <button class="btn" onclick="TE.speakAll()">🗣️</button>
+      <button class="btn" onclick="TE.toggleTheme()">🌓</button>
+      <button class="btn" onclick="TE.toggleContrast()">🌗</button>
+      <button class="btn" onclick="TE.fontUp()">A+</button>
+      <button class="btn" onclick="TE.fontDown()">A−</button>
+      <a class="btn" href="../app/settings.html">⚙️ Sync</a>
+    </div>
+  </div>
+</div>
+
+  <div class="container">
+    <div class="card">
+      <h3>1) Configura Sync (URL + API key)</h3>
+      <p class="muted">Este importador sube estudiantes a la hoja <code>Estudiantes</code> en Google Sheets a través de Apps Script.</p>
+      <a class="btn" href="../app/settings.html">⚙️ Configurar Sync</a>
+    </div>
+
+    <div class="card">
+      <h3>2) Seleccionar Excel (XLSX)</h3>
+      <p class="muted">El importador usa SheetJS desde CDN. Si está bloqueado, cambia de red (hotspot) o pide habilitar <code>cdn.jsdelivr.net</code>.</p>
+      <input type="file" id="file" accept=".xlsx"/>
+      <div style="height:10px"></div>
+      <div class="row">
+        <button class="btn primary" id="parse">🧾 Leer archivo</button>
+        <button class="btn" id="upload" disabled>🚀 Subir a Sync</button>
+      </div>
+      <div style="height:10px"></div>
+      <div id="status" class="muted">Esperando archivo…</div>
+    </div>
+
+    <div class="card">
+      <h3>3) Vista previa</h3>
+      <p class="muted">Se suben objetos JSON tal como aparecen en la hoja. El script normaliza campos típicos.</p>
+      <table class="table" id="preview"></table>
+    </div>
+  </div>
+
+  <div id="toast" class="toast"><strong>Info</strong> — <span></span></div>
+
+  <script src="../assets/js/common.js"></script>
+  <script src="../assets/js/api.js"></script>
+  <script>
+    (function(){
+      const s = document.createElement("script");
+      s.src = "https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js";
+      s.onload = ()=>TE.toast("Librería XLSX cargada.", "ok");
+      s.onerror = ()=>TE.toast("No se pudo cargar librería XLSX (CDN bloqueado).", "err");
+      document.head.appendChild(s);
+    })();
+
+    let rows = [];
+    function render(rows) {
+      const el = document.getElementById("preview");
+      if(!rows.length) { el.innerHTML = "<tr><th>Sin datos</th></tr>"; return; }
+      const keys = Object.keys(rows[0]).slice(0,8);
+      let html = "<tr>" + keys.map(k=>"<th>"+k+"</th>").join("") + "</tr>";
+      rows.slice(0,12).forEach(r=>{
+        html += "<tr>" + keys.map(k=>"<td>"+(r[k]??"")+"</td>").join("") + "</tr>";
+      });
+      el.innerHTML = html;
+    }
+
+    document.getElementById("parse").onclick = async () => {
+      try {
+        if(typeof XLSX === "undefined") throw new Error("Librería XLSX no disponible. Revisa CDN/red.");
+        const f = document.getElementById("file").files[0];
+        if(!f) throw new Error("Selecciona un archivo .xlsx");
+        const buf = await f.arrayBuffer();
+        const wb = XLSX.read(buf, {type:"array"});
+        const sheetName = wb.SheetNames[0];
+        const ws = wb.Sheets[sheetName];
+        const raw = XLSX.utils.sheet_to_json(ws, {defval:""});
+        if(!raw.length) throw new Error("La hoja está vacía.");
+        rows = raw;
+        document.getElementById("status").textContent = "Leídas " + rows.length + " filas desde hoja: " + sheetName;
+        render(rows);
+        document.getElementById("upload").disabled = false;
+        TE.toast("Archivo leído. Listo para subir.", "ok");
+      } catch(e) {
+        document.getElementById("status").textContent = "Error: " + e.message;
+        TE.toast(e.message, "err");
+      }
+    };
+
+    document.getElementById("upload").onclick = async () => {
+      try {
+        if(!rows.length) throw new Error("No hay filas para subir.");
+        const chunkSize = 250;
+        let sent = 0;
+        for(let i=0;i<rows.length;i+=chunkSize){
+          const chunk = rows.slice(i,i+chunkSize);
+          await TE_API.call("uploadStudents", { rows: chunk });
+          sent += chunk.length;
+          document.getElementById("status").textContent = "Subidos " + sent + "/" + rows.length + "…";
+        }
+        TE.toast("Carga finalizada. Estudiantes en Sync.", "ok");
+        document.getElementById("status").textContent = "Carga finalizada.";
+      } catch(e) {
+        TE.toast(e.message, "err");
+      }
+    };
+  </script>
+</body>
+</html>

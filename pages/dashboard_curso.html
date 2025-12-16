@@ -1,0 +1,115 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <title>Dashboard por Curso</title>
+  <link rel="stylesheet" href="../assets/css/styles.css"/>
+</head>
+<body>
+
+<div class="topbar">
+  <div class="topbar-inner">
+    <div class="brand">
+      <div class="logo"></div>
+      <div class="brand-title">
+        <strong>🎓 Dashboard por Curso</strong>
+        <small>Transporte Escolar • Sync oficial</small>
+      </div>
+    </div>
+    <div class="controls">
+      <a class="btn ghost" href="../index.html">⬅️ Volver</a>
+      <button class="btn" onclick="TE.speakAll()">🗣️</button>
+      <button class="btn" onclick="TE.toggleTheme()">🌓</button>
+      <button class="btn" onclick="TE.toggleContrast()">🌗</button>
+      <button class="btn" onclick="TE.fontUp()">A+</button>
+      <button class="btn" onclick="TE.fontDown()">A−</button>
+      <a class="btn" href="../app/settings.html">⚙️ Sync</a>
+    </div>
+  </div>
+</div>
+
+  <div class="container">
+    <div class="card">
+      <div class="row" style="align-items:center; justify-content:space-between">
+        <div style="min-width:280px; flex:1">
+          <div class="muted">Escribe curso (ej: 7° Básico, 1° Medio) o deja vacío para todo</div>
+          <input class="input" id="curso" placeholder="Ej: 1° Medio"/>
+        </div>
+        <div class="row">
+          <button class="btn primary" id="go">🔎 Ver</button>
+          <button class="btn" id="export">📤 Exportar CSV</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h3>📋 Resultados</h3>
+      <table class="table" id="t"></table>
+    </div>
+  </div>
+
+  <div id="toast" class="toast"><strong>Info</strong> — <span></span></div>
+  <script src="../assets/js/common.js"></script>
+  <script src="../assets/js/auth.js"></script>
+  <script src="../assets/js/api.js"></script>
+  <script>
+    const user = TE_AUTH.require();
+    let lastRows = [];
+
+    function render(rows) {
+      const el = document.getElementById("t");
+      if(!rows || !rows.length) {
+        el.innerHTML = "<tr><th>Sin datos</th></tr>";
+        return;
+      }
+      const headers = Object.keys(rows[0]);
+      let html = "<tr>" + headers.map(h=>"<th>"+h+"</th>").join("") + "</tr>";
+      rows.forEach(r=>{
+        html += "<tr>" + headers.map(h=>"<td>"+(r[h]??"")+"</td>").join("") + "</tr>";
+      });
+      el.innerHTML = html;
+    }
+
+    async function go() {
+      try {
+        const curso = document.getElementById("curso").value.trim();
+        const data = await TE_API.call("getCursoDashboard", { curso: curso, email: user.email });
+        lastRows = data.rows || [];
+        render(lastRows);
+        TE.toast("Cargados " + lastRows.length + " registros.", "ok");
+      } catch(e) {
+        TE.toast(e.message, "err");
+      }
+    }
+
+    function download(name, content) {
+      const blob = new Blob([content], {type:"text/csv;charset=utf-8"});
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url; a.download = name;
+      document.body.appendChild(a); a.click(); a.remove();
+      URL.revokeObjectURL(url);
+    }
+
+    document.getElementById("go").onclick = go;
+    document.getElementById("export").onclick = () => {
+      if(!lastRows.length) return TE.toast("Primero carga datos.", "warn");
+      const headers = Object.keys(lastRows[0]);
+      const csvLines = [headers.join(",")];
+      lastRows.forEach(r=>{
+        const line = headers.map(h=>{
+          const v = String(r[h] ?? "").replaceAll('"','""');
+          return '"' + v + '"';
+        }).join(",");
+        csvLines.push(line);
+      });
+      const curso = (document.getElementById("curso").value.trim() || "TODOS").replaceAll(" ", "_");
+      download("CURSO_" + curso + ".csv", csvLines.join("\n"));
+      TE.toast("Exportado.", "ok");
+    };
+
+    go();
+  </script>
+</body>
+</html>

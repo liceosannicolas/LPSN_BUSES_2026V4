@@ -1,0 +1,82 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <title>Config Sync</title>
+  <link rel="stylesheet" href="../assets/css/styles.css"/>
+</head>
+<body>
+
+<div class="topbar">
+  <div class="topbar-inner">
+    <div class="brand">
+      <div class="logo"></div>
+      <div class="brand-title">
+        <strong>⚙️ Configuración Sync</strong>
+        <small>Transporte Escolar • Sync oficial</small>
+      </div>
+    </div>
+    <div class="controls">
+      <a class="btn ghost" href="../index.html">⬅️ Volver</a>
+      <button class="btn" onclick="TE.speakAll()">🗣️</button>
+      <button class="btn" onclick="TE.toggleTheme()">🌓</button>
+      <button class="btn" onclick="TE.toggleContrast()">🌗</button>
+      <button class="btn" onclick="TE.fontUp()">A+</button>
+      <button class="btn" onclick="TE.fontDown()">A−</button>
+      <a class="btn" href="../app/settings.html">⚙️ Sync</a>
+    </div>
+  </div>
+</div>
+
+  <div class="container">
+    <div class="card">
+      <h3>🌐 URL del Web App (Apps Script)</h3>
+      <p class="muted">Pega la URL que termina en <code>/exec</code>.</p>
+      <input class="input" id="url" placeholder="https://script.google.com/macros/s/.../exec"/>
+      <div style="height:12px"></div>
+      <h3>🔑 API Key</h3>
+      <p class="muted">Define una API key en el script (propiedad <code>API_KEY</code>) y pégala aquí.</p>
+      <input class="input" id="key" placeholder="TU_API_KEY"/>
+      <div style="height:12px"></div>
+      <div class="row">
+        <button class="btn primary" id="save">💾 Guardar</button>
+        <button class="btn" id="test">📡 Probar conexión</button>
+        <button class="btn danger" id="clear">🧹 Limpiar</button>
+      </div>
+      <div style="height:8px"></div>
+      <span class="badge">Sync oficial: base central en Google Sheets • 3 digitadores</span>
+    </div>
+  </div>
+  <div id="toast" class="toast"><strong>Info</strong> — <span></span></div>
+  <script src="../assets/js/common.js"></script>
+  <script src="../assets/js/api.js"></script>
+  <script>
+    const url = document.getElementById("url");
+    const key = document.getElementById("key");
+    url.value = localStorage.getItem("te-sync-url")||"";
+    key.value = localStorage.getItem("te-sync-key")||"";
+    document.getElementById("save").onclick = () => {
+      localStorage.setItem("te-sync-url", url.value.trim());
+      localStorage.setItem("te-sync-key", key.value.trim());
+      TE.toast("Configuración guardada.", "ok");
+    };
+    document.getElementById("clear").onclick = () => {
+      localStorage.removeItem("te-sync-url");
+      localStorage.removeItem("te-sync-key");
+      url.value=""; key.value="";
+      TE.toast("Limpio.", "ok");
+    };
+    document.getElementById("test").onclick = async () => {
+      try {
+        localStorage.setItem("te-sync-url", url.value.trim());
+        localStorage.setItem("te-sync-key", key.value.trim());
+        await TE_API.call("ping", {});
+        TE.toast("Conexión OK.", "ok");
+      } catch(e) {
+        TE.toast(e.message, "err");
+      }
+    };
+  </script>
+</body>
+</html>

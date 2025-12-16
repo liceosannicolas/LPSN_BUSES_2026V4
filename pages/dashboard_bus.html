@@ -1,0 +1,145 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <title>Dashboard por Bus</title>
+  <link rel="stylesheet" href="../assets/css/styles.css"/>
+</head>
+<body>
+
+<div class="topbar">
+  <div class="topbar-inner">
+    <div class="brand">
+      <div class="logo"></div>
+      <div class="brand-title">
+        <strong>🚌 Dashboard por Bus</strong>
+        <small>Transporte Escolar • Sync oficial</small>
+      </div>
+    </div>
+    <div class="controls">
+      <a class="btn ghost" href="../index.html">⬅️ Volver</a>
+      <button class="btn" onclick="TE.speakAll()">🗣️</button>
+      <button class="btn" onclick="TE.toggleTheme()">🌓</button>
+      <button class="btn" onclick="TE.toggleContrast()">🌗</button>
+      <button class="btn" onclick="TE.fontUp()">A+</button>
+      <button class="btn" onclick="TE.fontDown()">A−</button>
+      <a class="btn" href="../app/settings.html">⚙️ Sync</a>
+    </div>
+  </div>
+</div>
+
+  <div class="container">
+    <div class="card">
+      <div class="row" style="align-items:center; justify-content:space-between">
+        <div style="min-width:280px; flex:1">
+          <div class="muted">Selecciona un bus</div>
+          <select id="busSel"></select>
+        </div>
+        <div class="row">
+          <button class="btn" id="refresh">🔄 Actualizar</button>
+          <button class="btn primary" id="export">📤 Exportar CSV</button>
+        </div>
+      </div>
+      <div style="height:12px"></div>
+      <div class="kpi">
+        <div class="pill">🧾 Recorrido: <span id="rec" class="muted"></span></div>
+        <div class="pill">💺 Cupos: <span id="cap" class="muted"></span></div>
+        <div class="pill">✅ Asignados: <span id="asig" class="muted"></span></div>
+        <div class="pill">⏳ En espera: <span id="wait" class="muted"></span></div>
+      </div>
+    </div>
+
+    <div class="two">
+      <div class="card">
+        <h3>✅ Asignados</h3>
+        <table class="table" id="t1"></table>
+      </div>
+      <div class="card">
+        <h3>⏳ En espera</h3>
+        <table class="table" id="t2"></table>
+      </div>
+    </div>
+  </div>
+
+  <div id="toast" class="toast"><strong>Info</strong> — <span></span></div>
+  <script src="../assets/js/common.js"></script>
+  <script src="../assets/js/auth.js"></script>
+  <script src="../assets/js/api.js"></script>
+  <script>
+    const user = TE_AUTH.require();
+
+    function renderTable(el, rows) {
+      if(!rows || !rows.length) {
+        el.innerHTML = "<tr><th>Sin datos</th></tr>";
+        return;
+      }
+      const headers = Object.keys(rows[0]);
+      let html = "<tr>" + headers.map(h=>"<th>"+h+"</th>").join("") + "</tr>";
+      rows.forEach(r=> {
+        html += "<tr>" + headers.map(h=>"<td>"+(r[h]??"")+"</td>").join("") + "</tr>";
+      });
+      el.innerHTML = html;
+    }
+
+    async function loadBuses() {
+      const data = await TE_API.call("listBuses", { email: user.email });
+      const sel = document.getElementById("busSel");
+      sel.innerHTML = "";
+      (data.buses||[]).forEach(b=> {
+        const o = document.createElement("option");
+        o.value = b.id;
+        o.textContent = "🚌 " + b.id + " — " + (b.nombre||("Bus "+b.id));
+        sel.appendChild(o);
+      });
+      sel.onchange = refresh;
+      if(sel.options.length) refresh();
+    }
+
+    async function refresh() {
+      try {
+        const busId = document.getElementById("busSel").value;
+        const data = await TE_API.call("getBusDashboard", { busId: busId, email: user.email });
+        document.getElementById("rec").textContent = data.bus.recorrido || "—";
+        document.getElementById("cap").textContent = String(data.bus.capacidad || "—");
+        document.getElementById("asig").textContent = String((data.asignados||[]).length);
+        document.getElementById("wait").textContent = String((data.enEspera||[]).length);
+        renderTable(document.getElementById("t1"), data.asignados||[]);
+        renderTable(document.getElementById("t2"), data.enEspera||[]);
+      } catch(e) {
+        TE.toast(e.message, "err");
+      }
+    }
+
+    function download(name, content) {
+      const blob = new Blob([content], {type:"text/csv;charset=utf-8"});
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url; a.download = name;
+      document.body.appendChild(a); a.click(); a.remove();
+      URL.revokeObjectURL(url);
+    }
+
+    document.getElementById("refresh").onclick = refresh;
+    document.getElementById("export").onclick = async () => {
+      const busId = document.getElementById("busSel").value;
+      const data = await TE_API.call("getBusDashboard", { busId: busId, email: user.email });
+      const rows = data.asignados || [];
+      if(!rows.length) return TE.toast("No hay datos para exportar.", "warn");
+      const headers = Object.keys(rows[0]);
+      const csvLines = [headers.join(",")];
+      rows.forEach(r=>{
+        const line = headers.map(h => {
+          const v = String(r[h] ?? "").replaceAll('"','""');
+          return '"' + v + '"';
+        }).join(",");
+        csvLines.push(line);
+      });
+      download("BUS_" + busId + "_asignados.csv", csvLines.join("\n"));
+      TE.toast("Exportado.", "ok");
+    };
+
+    loadBuses();
+  </script>
+</body>
+</html>

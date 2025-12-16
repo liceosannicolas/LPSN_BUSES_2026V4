@@ -1,0 +1,181 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <title>Asignación por RUT</title>
+  <link rel="stylesheet" href="../assets/css/styles.css"/>
+</head>
+<body>
+
+<div class="topbar">
+  <div class="topbar-inner">
+    <div class="brand">
+      <div class="logo"></div>
+      <div class="brand-title">
+        <strong>🧩 Asignar Bus por RUT</strong>
+        <small>Transporte Escolar • Sync oficial</small>
+      </div>
+    </div>
+    <div class="controls">
+      <a class="btn ghost" href="../index.html">⬅️ Volver</a>
+      <button class="btn" onclick="TE.speakAll()">🗣️</button>
+      <button class="btn" onclick="TE.toggleTheme()">🌓</button>
+      <button class="btn" onclick="TE.toggleContrast()">🌗</button>
+      <button class="btn" onclick="TE.fontUp()">A+</button>
+      <button class="btn" onclick="TE.fontDown()">A−</button>
+      <a class="btn" href="../app/settings.html">⚙️ Sync</a>
+    </div>
+  </div>
+</div>
+
+  <div class="container">
+    <div class="two">
+      <div class="card">
+        <h3>🔎 Buscar estudiante</h3>
+        <p class="muted">Ingresa el RUT. Se cargan datos desde la hoja “Estudiantes” (Sync).</p>
+        <div class="row">
+          <input class="input" id="rut" placeholder="12.345.678-9 o 12345678-9"/>
+          <button class="btn primary" id="btnBuscar">🔍 Buscar</button>
+        </div>
+        <div style="height:10px"></div>
+        <div id="studentCard" class="card" style="display:none; margin:0; background: rgba(255,255,255,.04)">
+          <div class="kpi">
+            <div><strong id="stName">—</strong><div class="muted" id="stMeta">—</div></div>
+          </div>
+          <div style="height:8px"></div>
+          <div class="grid" style="grid-template-columns:1fr 1fr; gap:10px">
+            <div><div class="muted">📍 Domicilio</div><div id="stDom">—</div></div>
+            <div><div class="muted">🏫 Curso</div><div id="stCurso">—</div></div>
+            <div><div class="muted">🏙️ Comuna/Zona</div><div id="stComuna">—</div></div>
+            <div><div class="muted">📧 Correo</div><div id="stEmail">—</div></div>
+          </div>
+          <div style="height:10px"></div>
+          <div class="badge" id="stStatus">Estado: —</div>
+        </div>
+      </div>
+
+      <div class="card">
+        <h3>🚌 Asignar bus</h3>
+        <p class="muted">Guarda asignación. El sistema crea/actualiza la hoja del bus: <code>BUS_&lt;ID&gt;</code>. Si se llena, envía a <code>En_espera</code>.</p>
+        <div style="height:8px"></div>
+        <label class="muted">Bus</label>
+        <select id="busSel"></select>
+        <div style="height:10px"></div>
+        <label class="muted">Recorrido</label>
+        <input class="input" id="recorrido" placeholder="Ej: Sector A → Liceo → Sector B"/>
+        <div style="height:10px"></div>
+        <div class="row">
+          <button class="btn primary" id="btnAsignar">✅ Guardar asignación</button>
+          <button class="btn" id="btnRef">🔄 Refrescar buses</button>
+          <button class="btn danger" id="logout">🚪 Salir</button>
+        </div>
+        <div style="height:12px"></div>
+        <div class="card" style="margin:0; background: rgba(255,255,255,.04)">
+          <h3>📌 Resultado</h3>
+          <p class="muted" id="result">Aún sin acciones.</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="section-title">
+      <h2>Atajos</h2>
+      <div class="row">
+        <a class="btn" href="../pages/dashboard_bus.html">🚌 Dashboard Bus</a>
+        <a class="btn" href="../pages/dashboard_curso.html">🎓 Dashboard Curso</a>
+        <a class="btn" href="../tools/importer_sync.html">📥 Cargar Nómina</a>
+      </div>
+    </div>
+  </div>
+
+  <div id="toast" class="toast"><strong>Info</strong> — <span></span></div>
+
+  <script src="../assets/js/common.js"></script>
+  <script src="../assets/js/auth.js"></script>
+  <script src="../assets/js/api.js"></script>
+  <script>
+    const user = TE_AUTH.require();
+    let currentStudent = null;
+
+    function normRut(v){
+      return (v||"").toUpperCase().replace(/\s+/g,"").replace(/\./g,"");
+    }
+
+    async function loadBuses() {
+      try {
+        const data = await TE_API.call("listBuses", { email: user.email });
+        const sel = document.getElementById("busSel");
+        sel.innerHTML = "";
+        (data.buses||[]).forEach(b => {
+          const opt = document.createElement("option");
+          opt.value = b.id;
+          opt.textContent = "🚌 " + b.id + " — " + (b.nombre||("Bus "+b.id)) + " (cap: " + (b.capacidad || "—") + ")";
+          opt.dataset.recorrido = b.recorrido || "";
+          sel.appendChild(opt);
+        });
+        if(sel.options.length) {
+          document.getElementById("recorrido").value = sel.options[0].dataset.recorrido || "";
+        }
+        sel.onchange = () => {
+          const o = sel.options[sel.selectedIndex];
+          document.getElementById("recorrido").value = (o && o.dataset.recorrido) ? o.dataset.recorrido : "";
+        };
+      } catch(e) {
+        TE.toast(e.message, "err");
+      }
+    }
+
+    async function buscar() {
+      const rut = normRut(document.getElementById("rut").value);
+      if(!rut) return TE.toast("Ingresa un RUT.", "warn");
+      try {
+        const data = await TE_API.call("getStudent", { rut: rut, email: user.email });
+        currentStudent = data.student;
+        const c = document.getElementById("studentCard");
+        c.style.display = "block";
+        document.getElementById("stName").textContent = currentStudent.nombre || "(Sin nombre)";
+        document.getElementById("stMeta").textContent = "RUT: " + currentStudent.rut;
+        document.getElementById("stDom").textContent = currentStudent.domicilio || "—";
+        document.getElementById("stCurso").textContent = currentStudent.curso || "—";
+        document.getElementById("stComuna").textContent = currentStudent.comuna || currentStudent.zona || "—";
+        document.getElementById("stEmail").textContent = currentStudent.email || "—";
+        document.getElementById("stStatus").textContent = "Estado: " + (data.status || "OK");
+        TE.toast("Estudiante cargado.", "ok");
+      } catch(e) {
+        currentStudent = null;
+        document.getElementById("studentCard").style.display = "none";
+        TE.toast(e.message, "err");
+      }
+    }
+
+    async function asignar() {
+      if(!currentStudent) return TE.toast("Primero busca un estudiante por RUT.", "warn");
+      const busId = document.getElementById("busSel").value;
+      const recorrido = document.getElementById("recorrido").value.trim();
+      if(!busId) return TE.toast("Selecciona un bus.", "warn");
+      try {
+        const data = await TE_API.call("assignBus", {
+          rut: currentStudent.rut,
+          busId: busId,
+          recorrido: recorrido,
+          digitador: user.email,
+          email: user.email
+        });
+        document.getElementById("result").textContent = data.message || "Asignación registrada.";
+        if(data.state === "EN_ESPERA") TE.toast("Bus sin cupo: enviado a En_espera.", "warn");
+        else TE.toast("Asignación guardada en hoja del bus.", "ok");
+      } catch(e) {
+        TE.toast(e.message, "err");
+      }
+    }
+
+    document.getElementById("btnBuscar").onclick = buscar;
+    document.getElementById("btnAsignar").onclick = asignar;
+    document.getElementById("btnRef").onclick = loadBuses;
+    document.getElementById("logout").onclick = () => TE_AUTH.logout();
+    document.getElementById("rut").addEventListener("keydown", (ev)=>{ if(ev.key==="Enter") buscar(); });
+
+    loadBuses();
+  </script>
+</body>
+</html>

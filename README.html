@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <title>Guía • Transporte Escolar</title>
+  <link rel="stylesheet" href="assets/css/styles.css"/>
+</head>
+<body>
+
+<div class="topbar">
+  <div class="topbar-inner">
+    <div class="brand">
+      <div class="logo"></div>
+      <div class="brand-title">
+        <strong>📘 Guía rápida</strong>
+        <small>Transporte Escolar • Sync oficial</small>
+      </div>
+    </div>
+    <div class="controls">
+      <a class="btn ghost" href="index.html">⬅️ Volver</a>
+      <button class="btn" onclick="TE.speakAll()">🗣️</button>
+      <button class="btn" onclick="TE.toggleTheme()">🌓</button>
+      <button class="btn" onclick="TE.toggleContrast()">🌗</button>
+      <button class="btn" onclick="TE.fontUp()">A+</button>
+      <button class="btn" onclick="TE.fontDown()">A−</button>
+      <a class="btn" href="app/settings.html">⚙️ Sync</a>
+    </div>
+  </div>
+</div>
+
+  <div class="container">
+    <div class="card">
+      <pre style="white-space:pre-wrap; margin:0"># Transporte Escolar — v3 (Sync oficial)
+
+## Objetivo
+- Digitador escribe el **RUT**
+- El sistema trae la ficha desde `Estudiantes`
+- Selecciona `BusID` + `Recorrido`
+- Guarda centralizado y además crea/actualiza la **hoja del bus**: `BUS_&lt;ID&gt;`
+
+## Hojas (se crean automáticamente)
+- Estudiantes
+- Buses
+- Asignaciones
+- En_espera
+- BUS_&lt;ID&gt;
+
+## Apps Script (setup)
+1. Crea un Google Sheet (vacío o existente).
+2. Extensiones → Apps Script → pega `backend/AppsScript.gs`.
+3. En Apps Script → Project Settings → Script Properties:
+   - API_KEY = tu clave (ej: NEOTECH-TRANSPORTE-2026-XXXX)
+4. Deploy → New deployment → Web app:
+   - Execute as: Me
+   - Who has access: Anyone with the link
+5. Copia la URL `/exec`.
+
+## Sitio
+- En `app/settings.html` pega URL + API key.
+- Carga nómina: `tools/importer_sync.html`.
+- Administra buses desde la hoja `Buses` (manual, por ahora):
+  - BusID | Nombre | Recorrido | Capacidad
+
+## Cupos y rezagados
+Si el bus alcanza la capacidad, la asignación queda:
+- En `En_espera` (y el estado también se refleja en `Asignaciones` como EN_ESPERA).
+
+## Nota
+El login del sitio es **local** (UX). La protección real es:
+- API key en Apps Script
+- Lista de correos permitidos (ALLOWED_EMAILS).
+</pre>
+    </div>
+  </div>
+  <script src="assets/js/common.js"></script>
+</body>
+</html>

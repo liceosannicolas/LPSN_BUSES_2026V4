@@ -1,0 +1,99 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <title>Transporte Escolar • Inicio</title>
+  <link rel="stylesheet" href="assets/css/styles.css"/>
+</head>
+<body>
+
+<div class="topbar">
+  <div class="topbar-inner">
+    <div class="brand">
+      <div class="logo"></div>
+      <div class="brand-title">
+        <strong>🚍 Transporte Escolar</strong>
+        <small>Transporte Escolar • Sync oficial</small>
+      </div>
+    </div>
+    <div class="controls">
+      
+      <button class="btn" onclick="TE.speakAll()">🗣️</button>
+      <button class="btn" onclick="TE.toggleTheme()">🌓</button>
+      <button class="btn" onclick="TE.toggleContrast()">🌗</button>
+      <button class="btn" onclick="TE.fontUp()">A+</button>
+      <button class="btn" onclick="TE.fontDown()">A−</button>
+      <a class="btn" href="app/settings.html">⚙️ Sync</a>
+    </div>
+  </div>
+</div>
+
+  <div class="container">
+    <div class="section-title">
+      <h2>Panel oficial (modo Sync)</h2>
+      <span class="badge">✅ 3 digitadores • ✅ Asignación por RUT • ✅ Hojas por Bus</span>
+    </div>
+
+    <div class="grid cards">
+      <a class="card" href="app/login.html">
+        <h3>🔐 Login Digitadores</h3>
+        <p>Ingreso con correo institucional autorizado y clave común.</p>
+      </a>
+      <a class="card" href="app/dashboard.html">
+        <h3>🧩 Asignar Bus por RUT</h3>
+        <p>Busca estudiante en base Sync y registra asignación en hoja del bus.</p>
+      </a>
+      <a class="card" href="pages/dashboard_bus.html">
+        <h3>🚌 Dashboard por Bus</h3>
+        <p>Recorrido, cupos, listados, exportación y rezagados.</p>
+      </a>
+      <a class="card" href="pages/dashboard_curso.html">
+        <h3>🎓 Dashboard por Curso</h3>
+        <p>Vista completa por curso/nivel: alumno + correo + bus + recorrido.</p>
+      </a>
+      <a class="card" href="tools/importer_sync.html">
+        <h3>📥 Cargar Nómina (Admin)</h3>
+        <p>Importa el Excel y lo sube a la hoja “Estudiantes” en Google Sheets.</p>
+      </a>
+      <a class="card" href="README.html">
+        <h3>📘 Guía rápida</h3>
+        <p>Pasos para configurar Apps Script, hoja base y seguridad.</p>
+      </a>
+    </div>
+
+    <div class="section-title"><h2>Estado de Sync</h2></div>
+    <div class="card">
+      <div class="row" style="align-items:center; justify-content:space-between">
+        <div>
+          <div class="pill">🌐 URL Sync: <span id="u" class="muted"></span></div>
+          <div style="height:10px"></div>
+          <div class="pill">🔑 API Key: <span id="k" class="muted"></span></div>
+        </div>
+        <button class="btn primary" id="ping">📡 Probar conexión</button>
+      </div>
+      <p class="muted" style="margin-top:10px">Configura URL y API key en ⚙️ Sync.</p>
+    </div>
+  </div>
+
+  <div id="toast" class="toast"><strong>Info</strong> — <span></span></div>
+  <div class="footer">© NeoTech EduLab • Transporte Escolar • Prohibida su copia y/o reproducción</div>
+
+  <script src="assets/js/common.js"></script>
+  <script src="assets/js/api.js"></script>
+  <script>
+    const u = localStorage.getItem("te-sync-url")||"(no configurado)";
+    const k = (localStorage.getItem("te-sync-key")||"").replace(/.(?=....)/g,"•") || "(no configurada)";
+    document.getElementById("u").textContent = u;
+    document.getElementById("k").textContent = k;
+    document.getElementById("ping").onclick = async () => {
+      try {
+        await TE_API.call("ping", {});
+        TE.toast("Conexión OK con Apps Script.", "ok");
+      } catch(e) {
+        TE.toast(e.message, "err");
+      }
+    };
+  </script>
+</body>
+</html>
