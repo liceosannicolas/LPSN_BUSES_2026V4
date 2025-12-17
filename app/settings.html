@@ -54,24 +54,29 @@
   <script>
     const url = document.getElementById("url");
     const key = document.getElementById("key");
+    const testEmail = document.getElementById("testEmail");
     url.value = localStorage.getItem("te-sync-url")||"";
     key.value = localStorage.getItem("te-sync-key")||"";
+    testEmail.value = (localStorage.getItem("te-test-email")||"").trim();
     document.getElementById("save").onclick = () => {
       localStorage.setItem("te-sync-url", url.value.trim());
       localStorage.setItem("te-sync-key", key.value.trim());
+      localStorage.setItem("te-test-email", testEmail.value.trim());
       TE.toast("Configuración guardada.", "ok");
     };
     document.getElementById("clear").onclick = () => {
       localStorage.removeItem("te-sync-url");
       localStorage.removeItem("te-sync-key");
-      url.value=""; key.value="";
+      localStorage.removeItem("te-test-email");
+      url.value=""; key.value=""; testEmail.value="";
       TE.toast("Limpio.", "ok");
     };
     document.getElementById("test").onclick = async () => {
       try {
         localStorage.setItem("te-sync-url", url.value.trim());
         localStorage.setItem("te-sync-key", key.value.trim());
-        await TE_API.call("ping", {});
+      localStorage.setItem("te-test-email", testEmail.value.trim());
+        await TE_API.call("ping", { email: (testEmail.value||"").trim() });
         TE.toast("Conexión OK.", "ok");
       } catch(e) {
         TE.toast(e.message, "err");
