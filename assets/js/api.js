@@ -8,11 +8,14 @@ const TE_API = {
     const body = { action, apiKey: TE_API.apiKey || "", ...payload };
     const res = await fetch(TE_API.baseUrl, {
       method: "POST",
-      headers: {"Content-Type":"application/json"},
+      headers: {"Content-Type":"text/plain;charset=utf-8"},
       body: JSON.stringify(body),
       mode: "cors"
     });
-    const data = await res.json().catch(()=>({ok:false, error:"Respuesta inválida."}));
+    const txt = await res.text();
+    let data;
+    try{ data = JSON.parse(txt); }catch(e){ data = {ok:false, error:"Respuesta inválida."}; }
+    
     if(!data.ok) throw new Error(data.error || "Error API.");
     return data;
   }

@@ -1,624 +1,346 @@
 /**
  * Transporte Escolar Sync (Apps Script)
- * WebApp endpoint: doPost(e)
- *
- * Seguridad (práctica):
- * - apiKey (Script Property API_KEY)
- * - whitelist de emails permitidos (ALLOWED_EMAILS)
- *
- * Requerido en Script Properties:
- * - API_KEY  : string (ej. LPSN-BUSES2026-KEY-001)
- * - SHEET_ID : ID del Google Sheet (entre /d/ y /edit)
- *
- * Payload JSON (POST): { action, apiKey, email, ... }
+ * POST JSON: {action, apiKey, ...}
  */
-
-// Digitadores permitidos (whitelist)
 const ALLOWED_EMAILS = [
   "belenacuna@liceosannicolas.cl",
   "franciscopinto@liceosannicolas.cl",
-  "echeverri@liceosannicolas.cl",
+  "echeverri@liceosannicolas.cl"
 ];
 
-// Nombres de hojas core
-const SHEETS = {
-  ESTUDIANTES: "Estudiantes",
-  BUSES: "Buses",
-  ASIGNACIONES: "Asignaciones",
-  ESPERA: "En_espera",
-  ZONAS: "Zonas",
-};
+function doPost(e){
+  try{
+    const body = JSON.parse((e.postData && e.postData.contents) ? e.postData.contents : "{}");
+    const action = body.action || "";
+    const apiKey = body.apiKey || "";
 
-// Encabezados recomendados
-const HEADERS = {
-  // Estudiantes: (carga única)
-  ESTUDIANTES: [
-    "RUT",
-    "NOMBRE",
-    "CURSO",
-    "DOMICILIO",
-    "COMUNA",
-    "CORREO",
-    "ZONA",
-  ],
-  // Buses
-  BUSES: [
-    "BUS_ID",          // ej: 1, 2, A, B
-    "NOMBRE",          // ej: BUS 1
-    "RECORRIDO",       // texto
-    "CAPACIDAD",       // número
-    "ZONAS",           // lista separada por coma
-    "ACTIVO",          // SI/NO
-  ],
-  // Asignaciones
-  ASIGNACIONES: [
-    "TS",
-    "RUT",
-    "NOMBRE",
-    "CURSO",
-    "CORREO",
-    "DOMICILIO",
-    "COMUNA",
-    "ZONA",
-    "BUS_ID",
-    "BUS_NOMBRE",
-    "RECORRIDO",
-    "ESTADO",          // ASIGNADO / EN_ESPERA / REASIGNADO
-    "DIGITADOR",
-    "OBS",
-  ],
-  // En espera
-  ESPERA: [
-    "TS",
-    "RUT",
-    "NOMBRE",
-    "CURSO",
-    "CORREO",
-    "DOMICILIO",
-    "COMUNA",
-    "ZONA",
-    "MOTIVO",          // SIN_CUPO / SIN_BUS / OTRO
-    "DIGITADOR",
-    "OBS",
-  ],
-  // Hoja por Bus: BUS_<BUS_ID>
-  BUS_SHEET: [
-    "TS",
-    "RUT",
-    "NOMBRE",
-    "CURSO",
-    "CORREO",
-    "ZONA",
-    "RECORRIDO",
-    "DIGITADOR",
-    "ESTADO",
-    "OBS",
-  ],
-  // Zonas (opcional)
-  ZONAS: [
-    "ZONA",
-    "PATRONES",        // palabras clave separadas por coma
-  ],
-};
-
-/**
- * Punto de entrada principal (POST)
- */
-function doPost(e) {
-  try {
-    const body = safeParse_(e);
-    const action = String(body.action || body.ACTION || "").trim();
-
-    // Soportar variaciones de clave que podrían enviar distintas versiones del frontend
-    const apiKeyRaw = (
-      body.apiKey ?? body.apikey ?? body.API_KEY ?? body.api_key ?? body.key ?? ""
-    );
-    const apiKey = String(apiKeyRaw || "").trim();
-
-    if (!checkApiKey_(apiKey)) return json_(false, null, "API key inválida.");
-
-    // Acciones que requieren email autorizado
-    const needsEmail = [
-      "ping",
-      "getStudent",
-      "listBuses",
-      "assignBus",
-      "uploadStudents",
-      "getBusDashboard",
-      "getCursoDashboard",
-      "exportXlsx",
-      "getMeta",
-    ];
-
-    if (needsEmail.indexOf(action) !== -1) {
-      const email = String(body.email || body.digitador || body.user || "").toLowerCase().trim();
-      if (!email) return json_(false, null, "Email requerido.");
-      if (ALLOWED_EMAILS.indexOf(email) === -1) return json_(false, null, "Correo no autorizado.");
+    if(!checkApiKey_(apiKey)) return json_(false, null, "API key inválida.");
+    if(body.email){
+      const em = String(body.email).toLowerCase().trim();
+      if(ALLOWED_EMAILS.indexOf(em) === -1) return json_(false, null, "Correo no autorizado.");
     }
 
     ensureCoreSheets_();
 
-    // Router
-    if (action === "ping") return json_(true, { ts: new Date().toISOString() });
-    if (action === "getMeta") return json_(true, getMeta_());
-    if (action === "getStudent") return json_(true, getStudent_(body.rut));
-    if (action === "listBuses") return json_(true, listBuses_());
-    if (action === "assignBus") return assignBus_(body);
-    if (action === "uploadStudents") return uploadStudents_(body.rows || []);
-    if (action === "getBusDashboard") return json_(true, getBusDashboard_(String(body.busId || "")));
-    if (action === "getCursoDashboard") return json_(true, getCursoDashboard_(String(body.curso || "")));
+    if(action === "ping") return json_(true, {ts: new Date().toISOString()});
+    if(action === "uploadStudents") return uploadStudents_(body.rows || []);
+    if(action === "listBuses") return listBuses_();
+    if(action === "getStudent") return getStudent_(body.rut);
+    if(action === "assignBus") return assignBus_(body);
+    if(action === "getBusDashboard") return getBusDashboard_(body.busId);
+    if(action === "getCursoDashboard") return getCursoDashboard_(body.curso);
 
     return json_(false, null, "Acción no soportada: " + action);
-  } catch (err) {
-    return json_(false, null, "Error: " + (err && err.message ? err.message : String(err)));
+  }catch(err){
+    return json_(false, null, String(err && err.message ? err.message : err));
   }
 }
 
-/**
- * Compatibilidad: algunos frontends prueban por GET\.
- */
-function doGet(e) {
-  return ContentService
-    .createTextOutput(JSON.stringify({ ok: true, msg: "GET OK. Use POST JSON.", ts: new Date().toISOString() }))
-    .setMimeType(ContentService.MimeType.JSON);
+function checkApiKey_(k){
+  const prop = PropertiesService.getScriptProperties().getProperty("API_KEY") || "";
+  return prop && k && String(k) === String(prop);
 }
 
-// =====================
-//  Core / Seguridad
-// =====================
+function ss_(){ return SpreadsheetApp.getActiveSpreadsheet(); }
 
-function checkApiKey_(k) {
-  const expected = String(PropertiesService.getScriptProperties().getProperty("API_KEY") || "").trim();
-  const got = String(k || "").trim();
-  return expected && got === expected;
-}
-
-function safeParse_(e) {
-  const raw = (e && e.postData && e.postData.contents) ? e.postData.contents : "{}";
-  try {
-    return JSON.parse(raw);
-  } catch (_err) {
-    throw new Error("JSON inválido en body.");
-  }
-}
-
-function json_(ok, data, errorMsg) {
-  const payload = {
-    ok: !!ok,
-    data: data === undefined ? null : data,
-    error: ok ? null : (errorMsg || "Error"),
-  };
-  return ContentService
-    .createTextOutput(JSON.stringify(payload))
-    .setMimeType(ContentService.MimeType.JSON);
-}
-
-function ss_() {
-  const id = String(PropertiesService.getScriptProperties().getProperty("SHEET_ID") || "").trim();
-  if (!id) throw new Error("Falta Script Property SHEET_ID.");
-  return SpreadsheetApp.openById(id);
-}
-
-function ensureCoreSheets_() {
+function ensureCoreSheets_(){
+  const names = ["Estudiantes","Buses","Asignaciones","En_espera"];
   const ss = ss_();
-
-  // Estudiantes
-  ensureSheet_(ss, SHEETS.ESTUDIANTES, HEADERS.ESTUDIANTES);
-  // Buses
-  ensureSheet_(ss, SHEETS.BUSES, HEADERS.BUSES);
-  // Asignaciones
-  ensureSheet_(ss, SHEETS.ASIGNACIONES, HEADERS.ASIGNACIONES);
-  // En espera
-  ensureSheet_(ss, SHEETS.ESPERA, HEADERS.ESPERA);
-  // Zonas (opcional)
-  ensureSheet_(ss, SHEETS.ZONAS, HEADERS.ZONAS);
+  names.forEach(n=>{
+    if(!ss.getSheetByName(n)){
+      const sh = ss.insertSheet(n);
+      if(n==="Estudiantes") sh.appendRow(["RUT","Nombre","Curso","Domicilio","Comuna","Email","Zona"]);
+      if(n==="Buses") sh.appendRow(["BusID","Nombre","Recorrido","Capacidad","Zonas"]);
+      if(n==="Asignaciones") sh.appendRow(["Timestamp","RUT","Nombre","Curso","Email","Comuna","Domicilio","BusID","Recorrido","Estado","Digitador"]);
+      if(n==="En_espera") sh.appendRow(["Timestamp","RUT","Nombre","Curso","Email","Comuna","Domicilio","BusID","Recorrido","Estado","Digitador","Motivo"]);
+    }
+  });
 }
 
-function ensureSheet_(ss, name, headers) {
-  let sh = ss.getSheetByName(name);
-  if (!sh) sh = ss.insertSheet(name);
+function normRut_(v){
+  return String(v||"").toUpperCase().replace(/\s+/g,"").replace(/\./g,"");
+}
+function headerMap_(header){
+  const map = {};
+  header.forEach((h,i)=> map[String(h).trim().toLowerCase()] = i);
+  return map;
+}
+function findHeaderIndex_(map, candidates){
+  for(var i=0;i<candidates.length;i++){
+    var k = String(candidates[i]).toLowerCase();
+    if(map.hasOwnProperty(k)) return map[k];
+  }
+  return -1;
+}
 
-  const lastCol = sh.getLastColumn();
-  const firstRow = lastCol ? sh.getRange(1, 1, 1, lastCol).getValues()[0] : [];
+function uploadStudents_(rows){
+  if(!rows || !rows.length) return json_(true, {inserted:0, updated:0});
+  const ss = ss_();
+  const sh = ss.getSheetByName("Estudiantes");
+  const data = sh.getDataRange().getValues();
+  const header = data[0];
+  const hm = headerMap_(header);
 
-  // Si está vacío, pone headers
-  if (!firstRow || firstRow.filter(String).length === 0) {
-    sh.getRange(1, 1, 1, headers.length).setValues([headers]);
-    sh.setFrozenRows(1);
-    sh.autoResizeColumns(1, Math.min(headers.length, 12));
+  // existing ruts
+  const existing = {};
+  for(var r=1;r<data.length;r++){
+    existing[normRut_(data[r][0])] = r+1;
+  }
+
+  var inserted=0, updated=0;
+  rows.forEach(obj=>{
+    var rut = normRut_(obj["RUT"] || obj["Rut"] || obj["rut"] || obj["RUN"] || obj["Run"] || obj["run"]);
+    if(!rut) return;
+    var nom = obj["Nombre"] || obj["NOMBRE"] || obj["nombre"] || "";
+    var curso = obj["Curso"] || obj["CURSO"] || obj["curso"] || "";
+    var dom = obj["Domicilio"] || obj["DOMICILIO"] || obj["domicilio"] || obj["Dirección"] || obj["Direccion"] || obj["direccion"] || "";
+    var comuna = obj["Comuna"] || obj["COMUNA"] || obj["comuna"] || obj["Localidad"] || obj["localidad"] || "";
+    var email = obj["Email"] || obj["EMAIL"] || obj["email"] || obj["Correo"] || obj["correo"] || "";
+    var zona = obj["Zona"] || obj["ZONA"] || obj["zona"] || "";
+
+    var out = [rut, nom, curso, dom, comuna, email, zona];
+    if(existing[rut]){
+      sh.getRange(existing[rut], 1, 1, out.length).setValues([out]);
+      updated++;
+    }else{
+      sh.appendRow(out);
+      inserted++;
+    }
+  });
+
+  return json_(true, {inserted: inserted, updated: updated});
+}
+
+function listBuses_(){
+  const sh = ss_().getSheetByName("Buses");
+  const values = sh.getDataRange().getValues();
+  const header = values[0];
+  const hm = headerMap_(header);
+  const idxId = findHeaderIndex_(hm, ["busid","id","bus"]);
+  const idxNom = findHeaderIndex_(hm, ["nombre","name"]);
+  const idxRec = findHeaderIndex_(hm, ["recorrido","ruta","route"]);
+  const idxCap = findHeaderIndex_(hm, ["capacidad","cupos","asientos"]);
+  const buses = [];
+  for(var i=1;i<values.length;i++){
+    var row = values[i];
+    var id = String(row[idxId>=0?idxId:0] || "").trim();
+    if(!id) continue;
+    buses.push({
+      id: id,
+      nombre: String(row[idxNom>=0?idxNom:1]||"").trim() || ("Bus " + id),
+      recorrido: String(row[idxRec>=0?idxRec:2]||"").trim(),
+      capacidad: Number(row[idxCap>=0?idxCap:3]||"") || ""
+    });
+  }
+  return json_(true, {buses: buses});
+}
+
+function getStudent_(rut){
+  rut = normRut_(rut);
+  if(!rut) return json_(false, null, "RUT requerido.");
+  const st = getStudentObj_(rut);
+  if(!st) return json_(false, null, "No se encontró el RUT en Estudiantes.");
+  return json_(true, {student: st, status: "ENCONTRADO"});
+}
+
+function getStudentObj_(rut){
+  rut = normRut_(rut);
+  const sh = ss_().getSheetByName("Estudiantes");
+  const values = sh.getDataRange().getValues();
+  for(var i=1;i<values.length;i++){
+    if(normRut_(values[i][0]) === rut){
+      return {
+        rut: rut,
+        nombre: values[i][1] || "",
+        curso: values[i][2] || "",
+        domicilio: values[i][3] || "",
+        comuna: values[i][4] || "",
+        email: values[i][5] || "",
+        zona: values[i][6] || ""
+      };
+    }
+  }
+  return null;
+}
+
+function getBusById_(busId){
+  busId = String(busId||"").trim();
+  const sh = ss_().getSheetByName("Buses");
+  const v = sh.getDataRange().getValues();
+  for(var i=1;i<v.length;i++){
+    var id = String(v[i][0]||"").trim();
+    if(id === busId){
+      return {
+        id: id,
+        nombre: String(v[i][1]||"").trim() || ("Bus " + id),
+        recorrido: String(v[i][2]||"").trim(),
+        capacidad: Number(v[i][3]||"") || ""
+      };
+    }
+  }
+  return null;
+}
+
+function ensureBusSheet_(busId){
+  const ss = ss_();
+  const name = "BUS_" + String(busId).trim();
+  var sh = ss.getSheetByName(name);
+  if(!sh){
+    sh = ss.insertSheet(name);
+    sh.appendRow(["Timestamp","RUT","Nombre","Curso","Email","Comuna","Domicilio","BusID","Recorrido","Estado","Digitador"]);
   }
   return sh;
 }
 
-function getMeta_() {
-  return {
-    sheetId: PropertiesService.getScriptProperties().getProperty("SHEET_ID") || null,
-    version: "transportesync-v4-v5-backend",
-    allowedEmails: ALLOWED_EMAILS,
-    sheets: SHEETS,
-    now: new Date().toISOString(),
-  };
+function seatCount_(busId){
+  const sh = ss_().getSheetByName("Asignaciones");
+  const v = sh.getDataRange().getValues();
+  var cnt = 0;
+  for(var i=1;i<v.length;i++){
+    var rowBus = String(v[i][7]||"").trim();
+    var estado = String(v[i][9]||"").trim();
+    if(rowBus === String(busId).trim() && estado === "ASIGNADO") cnt++;
+  }
+  return cnt;
 }
 
-// =====================
-//  Estudiantes
-// =====================
-
-function normalizeRut_(rut) {
-  // Normaliza para búsqueda: elimina puntos/espacios, deja guión si existe
-  let r = String(rut || "").toUpperCase().trim();
-  r = r.replace(/\s+/g, "");
-  r = r.replace(/\./g, "");
-  return r;
-}
-
-function getStudent_(rut) {
-  const ss = ss_();
-  const sh = ss.getSheetByName(SHEETS.ESTUDIANTES);
-  const r = normalizeRut_(rut);
-  if (!r) return { found: false, reason: "RUT vacío" };
-
-  const values = sh.getDataRange().getValues();
-  if (values.length < 2) return { found: false, reason: "Hoja Estudiantes vacía" };
-
-  const header = values[0].map(h => String(h).trim().toUpperCase());
-  const idxRut = header.indexOf("RUT");
-  if (idxRut === -1) return { found: false, reason: "No existe columna RUT" };
-
-  for (let i = 1; i < values.length; i++) {
-    const row = values[i];
-    const rr = normalizeRut_(row[idxRut]);
-    if (rr === r) {
-      return {
-        found: true,
-        rowIndex: i + 1,
-        student: rowToObj_(header, row),
-      };
+function upsertByRut_(sh, rut, row, rutColIndex){
+  const v = sh.getDataRange().getValues();
+  for(var i=1;i<v.length;i++){
+    if(normRut_(v[i][rutColIndex]) === normRut_(rut)){
+      sh.getRange(i+1, 1, 1, row.length).setValues([row]);
+      return {updated:true};
     }
   }
-
-  return { found: false, reason: "No encontrado" };
+  sh.appendRow(row);
+  return {updated:false};
 }
 
-function rowToObj_(header, row) {
-  const o = {};
-  for (let i = 0; i < header.length; i++) {
-    const key = header[i];
-    if (!key) continue;
-    o[key] = row[i];
-  }
-  return o;
-}
-
-/**
- * Carga masiva de estudiantes (carga única por Admin).
- * Espera rows como array de objetos con claves compatibles:
- * { RUT, NOMBRE, CURSO, DOMICILIO, COMUNA, CORREO, ZONA }
- */
-function uploadStudents_(rows) {
+function removeFromBusSheets_(rut){
   const ss = ss_();
-  const sh = ss.getSheetByName(SHEETS.ESTUDIANTES);
-
-  if (!Array.isArray(rows) || rows.length === 0) {
-    return json_(false, null, "No hay filas para cargar.");
-  }
-
-  // Limpia y reescribe todo (carga única)
-  sh.clearContents();
-  sh.getRange(1, 1, 1, HEADERS.ESTUDIANTES.length).setValues([HEADERS.ESTUDIANTES]);
-
-  const out = rows.map(r => {
-    const obj = r || {};
-    return [
-      normalizeRut_(obj.RUT || obj.rut),
-      obj.NOMBRE || obj.nombre || "",
-      obj.CURSO || obj.curso || "",
-      obj.DOMICILIO || obj.domicilio || "",
-      obj.COMUNA || obj.comuna || "",
-      obj.CORREO || obj.correo || "",
-      obj.ZONA || obj.zona || "",
-    ];
+  const target = normRut_(rut);
+  ss.getSheets().forEach(sh=>{
+    const name = sh.getName();
+    if(name.indexOf("BUS_") !== 0) return;
+    const v = sh.getDataRange().getValues();
+    for(var i=v.length-1;i>=1;i--){
+      if(normRut_(v[i][1]) === target){
+        sh.deleteRow(i+1);
+      }
+    }
   });
-
-  sh.getRange(2, 1, out.length, HEADERS.ESTUDIANTES.length).setValues(out);
-  sh.setFrozenRows(1);
-  sh.autoResizeColumns(1, Math.min(HEADERS.ESTUDIANTES.length, 12));
-
-  return json_(true, { inserted: out.length });
 }
 
-// =====================
-//  Buses
-// =====================
-
-function listBuses_() {
-  const ss = ss_();
-  const sh = ss.getSheetByName(SHEETS.BUSES);
-  const values = sh.getDataRange().getValues();
-  if (values.length < 2) return [];
-
-  const header = values[0].map(h => String(h).trim().toUpperCase());
-
-  const idx = {
-    BUS_ID: header.indexOf("BUS_ID"),
-    NOMBRE: header.indexOf("NOMBRE"),
-    RECORRIDO: header.indexOf("RECORRIDO"),
-    CAPACIDAD: header.indexOf("CAPACIDAD"),
-    ZONAS: header.indexOf("ZONAS"),
-    ACTIVO: header.indexOf("ACTIVO"),
-  };
-
-  const out = [];
-  for (let i = 1; i < values.length; i++) {
-    const row = values[i];
-    const busId = String(row[idx.BUS_ID] || "").trim();
-    if (!busId) continue;
-    const activo = String(row[idx.ACTIVO] || "SI").trim().toUpperCase();
-    if (activo === "NO" || activo === "0" || activo === "FALSE") continue;
-
-    out.push({
-      busId,
-      nombre: row[idx.NOMBRE] || ("BUS " + busId),
-      recorrido: row[idx.RECORRIDO] || "",
-      capacidad: Number(row[idx.CAPACIDAD] || 0) || 0,
-      zonas: String(row[idx.ZONAS] || "").split(",").map(s => s.trim()).filter(Boolean),
-    });
+function removeFromWaiting_(rut){
+  const sh = ss_().getSheetByName("En_espera");
+  const v = sh.getDataRange().getValues();
+  const target = normRut_(rut);
+  for(var i=v.length-1;i>=1;i--){
+    if(normRut_(v[i][1]) === target){
+      sh.deleteRow(i+1);
+    }
   }
-  return out;
 }
 
-function getBusById_(busId) {
-  const buses = listBuses_();
-  const id = String(busId || "").trim();
-  return buses.find(b => String(b.busId) === id) || null;
-}
+function assignBus_(body){
+  const rut = normRut_(body.rut);
+  const busId = String(body.busId||"").trim();
+  const recorrido = String(body.recorrido||"").trim();
+  const digitador = String(body.digitador||"").trim();
 
-function busSheetName_(busId) {
-  return "BUS_" + String(busId).trim();
-}
-
-function ensureBusSheet_(busId) {
-  const ss = ss_();
-  const name = busSheetName_(busId);
-  return ensureSheet_(ss, name, HEADERS.BUS_SHEET);
-}
-
-function countAssignedInBus_(busId) {
-  // Cuenta filas en BUS_<id> (excluye header)
-  const ss = ss_();
-  const sh = ss.getSheetByName(busSheetName_(busId));
-  if (!sh) return 0;
-  const last = sh.getLastRow();
-  return Math.max(0, last - 1);
-}
-
-// =====================
-//  Asignación con cupos
-// =====================
-
-/**
- * assignBus body:
- * {
- *  rut, busId, digitador, obs, email
- * }
- */
-function assignBus_(body) {
-  const rut = normalizeRut_(body.rut || body.RUT);
-  const busId = String(body.busId || body.BUS_ID || "").trim();
-  const digitador = String(body.digitador || body.email || "").toLowerCase().trim();
-  const obs = String(body.obs || "");
-
-  // Validación fuerte del digitador
-  if (!digitador) return json_(false, null, "Digitador requerido.");
-  if (ALLOWED_EMAILS.indexOf(digitador) === -1) return json_(false, null, "Digitador no autorizado.");
-
-  if (!rut) return json_(false, null, "RUT requerido.");
-  if (!busId) return json_(false, null, "Bus requerido.");
-
-  const studentRes = getStudent_(rut);
-  if (!studentRes.found) return json_(false, null, "Alumno no encontrado por RUT.");
+  if(!rut) return json_(false, null, "RUT requerido.");
+  if(!busId) return json_(false, null, "BusID requerido.");
 
   const bus = getBusById_(busId);
-  if (!bus) return json_(false, null, "Bus no existe o no está activo.");
+  if(!bus) return json_(false, null, "Bus no encontrado en hoja Buses.");
 
-  // Control cupos
-  if (bus.capacidad > 0) {
-    ensureBusSheet_(busId);
-    const used = countAssignedInBus_(busId);
-    if (used >= bus.capacidad) {
-      // En espera
-      pushEspera_(studentRes.student, digitador, "SIN_CUPO", obs);
-      return json_(true, {
-        status: "EN_ESPERA",
-        reason: "SIN_CUPO",
-        busId,
-        busNombre: bus.nombre,
-        capacidad: bus.capacidad,
-        ocupados: used,
-      });
+  const student = getStudentObj_(rut);
+  if(!student) return json_(false, null, "Estudiante no encontrado.");
+
+  // Avoid duplicates if reassigning
+  removeFromBusSheets_(rut);
+  removeFromWaiting_(rut);
+
+  const now = new Date();
+  const ts = Utilities.formatDate(now, Session.getScriptTimeZone(), "yyyy-MM-dd HH:mm:ss");
+  const cap = bus.capacidad ? Number(bus.capacidad) : null;
+  const current = seatCount_(busId);
+  const hasSeat = (cap === null || cap === 0) ? true : (current < cap);
+  const rec = recorrido || bus.recorrido || "";
+
+  const asigSh = ss_().getSheetByName("Asignaciones");
+  const waitSh = ss_().getSheetByName("En_espera");
+
+  if(!hasSeat){
+    const rowWait = [ts, rut, student.nombre, student.curso, student.email, student.comuna, student.domicilio, busId, rec, "EN_ESPERA", digitador, "Sin cupo"];
+    upsertByRut_(waitSh, rut, rowWait, 1);
+    const rowAsig = [ts, rut, student.nombre, student.curso, student.email, student.comuna, student.domicilio, busId, rec, "EN_ESPERA", digitador];
+    upsertByRut_(asigSh, rut, rowAsig, 1);
+    return json_(true, {state:"EN_ESPERA", message:"Bus sin cupo. Enviado a En_espera."});
+  }
+
+  const row = [ts, rut, student.nombre, student.curso, student.email, student.comuna, student.domicilio, busId, rec, "ASIGNADO", digitador];
+  upsertByRut_(asigSh, rut, row, 1);
+  const busSheet = ensureBusSheet_(busId);
+  upsertByRut_(busSheet, rut, row, 1);
+
+  return json_(true, {state:"ASIGNADO", message:"Asignado y registrado en hoja BUS_" + busId + "."});
+}
+
+function getBusDashboard_(busId){
+  busId = String(busId||"").trim();
+  if(!busId) return json_(false, null, "BusID requerido.");
+  const bus = getBusById_(busId);
+  if(!bus) return json_(false, null, "Bus no encontrado.");
+
+  const asigSheet = ensureBusSheet_(busId);
+  const asigVals = asigSheet.getDataRange().getValues();
+  const headers = asigVals[0];
+  const asignados = [];
+  for(var i=1;i<asigVals.length;i++){
+    var obj = {};
+    for(var c=0;c<headers.length;c++) obj[headers[c]] = asigVals[i][c];
+    asignados.push(obj);
+  }
+
+  const waitSh = ss_().getSheetByName("En_espera");
+  const waitVals = waitSh.getDataRange().getValues();
+  const wHeaders = waitVals[0];
+  const enEspera = [];
+  for(var r=1;r<waitVals.length;r++){
+    if(String(waitVals[r][7]||"").trim() === busId){
+      var o = {};
+      for(var c2=0;c2<wHeaders.length;c2++) o[wHeaders[c2]] = waitVals[r][c2];
+      enEspera.push(o);
     }
   }
 
-  // Si ya estaba asignado antes, marcamos REASIGNADO y registramos de nuevo
-  // (simple: no borramos histórico)
-
-  // Escribe en Asignaciones
-  const s = studentRes.student;
-  const now = new Date();
-
-  pushAsignacion_(s, bus, digitador, "ASIGNADO", obs, now);
-  pushBusSheet_(s, bus, digitador, "ASIGNADO", obs, now);
-
-  return json_(true, {
-    status: "ASIGNADO",
-    busId: bus.busId,
-    busNombre: bus.nombre,
-    recorrido: bus.recorrido,
-  });
+  return json_(true, {bus: bus, asignados: asignados, enEspera: enEspera});
 }
 
-function pushAsignacion_(studentObj, bus, digitador, estado, obs, now) {
-  const ss = ss_();
-  const sh = ss.getSheetByName(SHEETS.ASIGNACIONES);
-
-  const row = [
-    now.toISOString(),
-    normalizeRut_(studentObj.RUT),
-    studentObj.NOMBRE || "",
-    studentObj.CURSO || "",
-    studentObj.CORREO || "",
-    studentObj.DOMICILIO || "",
-    studentObj.COMUNA || "",
-    studentObj.ZONA || "",
-    bus.busId,
-    bus.nombre,
-    bus.recorrido,
-    estado,
-    digitador,
-    obs,
-  ];
-
-  sh.appendRow(row);
-}
-
-function pushBusSheet_(studentObj, bus, digitador, estado, obs, now) {
-  const sh = ensureBusSheet_(bus.busId);
-
-  const row = [
-    now.toISOString(),
-    normalizeRut_(studentObj.RUT),
-    studentObj.NOMBRE || "",
-    studentObj.CURSO || "",
-    studentObj.CORREO || "",
-    studentObj.ZONA || "",
-    bus.recorrido || "",
-    digitador,
-    estado,
-    obs,
-  ];
-
-  sh.appendRow(row);
-}
-
-function pushEspera_(studentObj, digitador, motivo, obs) {
-  const ss = ss_();
-  const sh = ss.getSheetByName(SHEETS.ESPERA);
-  const now = new Date();
-
-  const row = [
-    now.toISOString(),
-    normalizeRut_(studentObj.RUT),
-    studentObj.NOMBRE || "",
-    studentObj.CURSO || "",
-    studentObj.CORREO || "",
-    studentObj.DOMICILIO || "",
-    studentObj.COMUNA || "",
-    studentObj.ZONA || "",
-    motivo,
-    digitador,
-    obs,
-  ];
-
-  sh.appendRow(row);
-}
-
-// =====================
-//  Dashboards
-// =====================
-
-function getBusDashboard_(busId) {
-  const id = String(busId || "").trim();
-  if (!id) throw new Error("busId requerido");
-
-  const bus = getBusById_(id);
-  if (!bus) return { busId: id, exists: false };
-
-  ensureBusSheet_(id);
-  const ss = ss_();
-  const sh = ss.getSheetByName(busSheetName_(id));
-  const values = sh.getDataRange().getValues();
-  const header = values[0].map(h => String(h).trim().toUpperCase());
-
-  const data = [];
-  for (let i = 1; i < values.length; i++) {
-    data.push(rowToObj_(header, values[i]));
-  }
-
-  const ocupados = Math.max(0, values.length - 1);
-  return {
-    exists: true,
-    bus,
-    ocupados,
-    cupos: bus.capacidad,
-    disponibles: bus.capacidad > 0 ? Math.max(0, bus.capacidad - ocupados) : null,
-    rows: data,
-  };
-}
-
-function getCursoDashboard_(curso) {
-  const target = String(curso || "").trim().toUpperCase();
-  if (!target) throw new Error("curso requerido");
-
-  // Leemos Asignaciones y filtramos por curso (último estado por RUT)
-  const ss = ss_();
-  const sh = ss.getSheetByName(SHEETS.ASIGNACIONES);
-  const values = sh.getDataRange().getValues();
-  if (values.length < 2) return { curso: target, rows: [] };
-
-  const header = values[0].map(h => String(h).trim().toUpperCase());
-  const idx = {
-    TS: header.indexOf("TS"),
-    RUT: header.indexOf("RUT"),
-    CURSO: header.indexOf("CURSO"),
-  };
-
-  // Tomamos el último registro por RUT
-  const lastByRut = new Map();
-  for (let i = 1; i < values.length; i++) {
-    const row = values[i];
-    const c = String(row[idx.CURSO] || "").trim().toUpperCase();
-    if (c !== target) continue;
-    const r = normalizeRut_(row[idx.RUT]);
-    if (!r) continue;
-
-    // Compara timestamp
-    const ts = new Date(String(row[idx.TS] || ""));
-    const prev = lastByRut.get(r);
-    if (!prev || ts > prev.ts) {
-      lastByRut.set(r, { ts, obj: rowToObj_(header, row) });
+function getCursoDashboard_(curso){
+  curso = String(curso||"").trim().toLowerCase();
+  const sh = ss_().getSheetByName("Asignaciones");
+  const v = sh.getDataRange().getValues();
+  const header = v[0];
+  const rows = [];
+  for(var i=1;i<v.length;i++){
+    var c = String(v[i][3]||"").trim().toLowerCase();
+    if(!curso || c === curso){
+      var obj = {};
+      for(var j=0;j<header.length;j++) obj[header[j]] = v[i][j];
+      rows.push(obj);
     }
   }
-
-  return {
-    curso: target,
-    count: lastByRut.size,
-    rows: Array.from(lastByRut.values()).sort((a,b)=>a.ts-b.ts).map(x=>x.obj),
-  };
+  return json_(true, {rows: rows});
 }
 
-// =====================
-//  Utilidades / Setup
-// =====================
-
-/**
- * Ejecuta una sola vez para configurar Script Properties.
- * - Ajusta API_KEY y SHEET_ID según corresponda.
- */
-function SETUP_KEYS_ONCE() {
-  PropertiesService.getScriptProperties().setProperties(
-    {
-      API_KEY: "LPSN-BUSES2026-KEY-001",
-      SHEET_ID: "1F_0K_CXoHOc_FWe-MYoeSXZGvaXFCwA-Ae1RmrC3PZI",
-    },
-    true
-  );
-  Logger.log("OK");
-}
-
-/**
- * (Opcional) Crea hojas core si no existen.
- */
-function INIT_SHEETS() {
-  ensureCoreSheets_();
-  Logger.log("Sheets OK");
+function json_(ok, data, error){
+  var payload = {ok: !!ok};
+  if(data){
+    Object.keys(data).forEach(k=> payload[k] = data[k]);
+  }
+  if(error) payload.error = error;
+  return ContentService.createTextOutput(JSON.stringify(payload))
+    .setMimeType(ContentService.MimeType.JSON);
 }
