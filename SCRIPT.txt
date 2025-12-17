@@ -178,20 +178,93 @@ function ensureSheet_(ss, name, cols){
 }
 function ensureSheets_(){
   const ss = ss_();
-  ensureSheet_(ss, SH.ESTUDIANTES, EST_COLS);
+  const stSh = findStudentsSheet_() || ensureSheet_(ss, SH.ESTUDIANTES, EST_COLS);
+  ensureStudentColumns_(stSh);
   ensureSheet_(ss, SH.BUSES, BUS_COLS);
   ensureSheet_(ss, SH.ASIGNACIONES, ASIG_COLS);
   ensureSheet_(ss, SH.ESPERA, ESP_COLS);
 }
 
+/**
+ * Auto-detección de la hoja de estudiantes:
+ * - No depende del nombre (Externos/Estudiantes/etc.)
+ * - Busca una pestaña cuya fila 1 contenga al menos "RUT" y otros campos comunes.
+ */
+function findStudentsSheet_(){
+  const ss = ss_();
+  const sheets = ss.getSheets();
+  const mustHave = ["RUT"];
+  const niceToHave = ["NOMBRE","CURSO","EMAIL","CORREO","DOMICILIO","COMUNA","ZONA"];
+
+  let best = null;
+  let bestScore = -1;
+
+  for(const sh of sheets){
+    const lastCol = sh.getLastColumn();
+    if(lastCol < 1) continue;
+
+    const headerRow = sh.getRange(1,1,1,Math.min(lastCol,50)).getValues()[0]
+      .map(h => String(h).trim().toUpperCase())
+      .filter(Boolean);
+
+    const hasMust = mustHave.every(h => headerRow.indexOf(h) !== -1);
+    if(!hasMust) continue;
+
+    const score = niceToHave.reduce((acc, h) => acc + (headerRow.indexOf(h) !== -1 ? 1 : 0), 0);
+    if(score > bestScore){
+      best = sh;
+      bestScore = score;
+    }
+  }
+  return best;
+}
+
+function getStudentsSheet_(){
+  const ss = ss_();
+  return findStudentsSheet_() || ss.getSheetByName(SH.ESTUDIANTES) || ensureSheet_(ss, SH.ESTUDIANTES, EST_COLS);
+}
+
+// Asegura encabezados mínimos y columnas faltantes (sin duplicar EMAIL/CORREO).
+function ensureStudentColumns_(sh){
+  const lastCol = sh.getLastColumn();
+  const headerRow = lastCol ? sh.getRange(1,1,1,lastCol).getValues()[0] : [];
+  const header = headerRow.map(h => String(h).trim().toUpperCase());
+
+  // Si la hoja está vacía (sin headers), setear headers estándar
+  const nonEmpty = headerRow.filter(v => String(v||"").trim() !== "").length;
+  if(nonEmpty === 0){
+    sh.getRange(1,1,1,EST_COLS.length).setValues([EST_COLS]);
+    sh.setFrozenRows(1);
+    return;
+  }
+
+  const set = new Set(header.filter(Boolean));
+
+  // Si existe EMAIL, considerarlo equivalente a CORREO (para no duplicar).
+  const hasEmail = set.has("EMAIL") || set.has("MAIL");
+  const missing = EST_COLS.filter(c => {
+    if(c === "CORREO" && hasEmail) return false;
+    return !set.has(c);
+  });
+
+  if(missing.length > 0){
+    sh.getRange(1, lastCol + 1, 1, missing.length).setValues([missing]);
+    sh.setFrozenRows(1);
+  }
+}
+
+
 /* ========= Students ========= */
 
 function findStudent_(rut){
   const ss = ss_();
-  const sh = ss.getSheetByName(SH.ESTUDIANTES);
+  const sh = getStudentsSheet_();
   const values = sh.getDataRange().getValues();
   if(values.length < 2) return null;
   const {h, m} = headerMap_(values[0]);
+  // Alias: si la hoja usa EMAIL en vez de CORREO
+  if(m[\"CORREO\"] === undefined && m[\"EMAIL\"] !== undefined) m[\"CORREO\"] = m[\"EMAIL\"];
+  if(m[\"CORREO\"] === undefined && m[\"MAIL\"] !== undefined) m[\"CORREO\"] = m[\"MAIL\"];
   const idxRut = m["RUT"];
   if(idxRut === undefined) return null;
   const target = normRut_(rut);
@@ -237,11 +310,15 @@ function toStudentObj_(h, row){
 
 function updateStudent_(rut, fields){
   const ss = ss_();
-  const sh = ss.getSheetByName(SH.ESTUDIANTES);
+  const sh = getStudentsSheet_();
   const values = sh.getDataRange().getValues();
   if(values.length < 2) return {ok:false, error:"Hoja Estudiantes vacía"};
 
   const {h, m} = headerMap_(values[0]);
+  // Alias: si la hoja usa EMAIL en vez de CORREO
+  if(m["CORREO"] === undefined && m["EMAIL"] !== undefined) m["CORREO"] = m["EMAIL"];
+  if(m["CORREO"] === undefined && m["MAIL"] !== undefined) m["CORREO"] = m["MAIL"];
+
   const idxRut = m["RUT"];
   if(idxRut === undefined) return {ok:false, error:"No existe columna RUT"};
 
@@ -490,7 +567,7 @@ function rowToObj_(header, row){
 function uploadStudents_(rows){
   try{
     const ss = ss_();
-    const sh = ss.getSheetByName(SH.ESTUDIANTES);
+    const sh = getStudentsSheet_();
 
     // map headers
     const header = sh.getRange(1,1,1,sh.getLastColumn()).getValues()[0].map(x=>String(x||"").trim().toUpperCase());
