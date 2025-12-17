@@ -26,6 +26,7 @@ function doPost(e){
     if(action === "uploadStudents") return uploadStudents_(body.rows || []);
     if(action === "listBuses") return listBuses_();
     if(action === "getStudent") return getStudent_(body.rut);
+    if(action === "updateStudent") return updateStudent_(body);
     if(action === "assignBus") return assignBus_(body);
     if(action === "getBusDashboard") return getBusDashboard_(body.busId);
     if(action === "getCursoDashboard") return getCursoDashboard_(body.curso);
@@ -241,6 +242,57 @@ function removeFromWaiting_(rut){
     }
   }
 }
+
+
+function updateStudent_(body){
+  const rut = normRut_(body.rut);
+  if(!rut) return json_(false, null, "RUT requerido.");
+  const sh = ss_().getSheetByName("Estudiantes");
+  if(!sh) return json_(false, null, "No existe la hoja Estudiantes.");
+
+  const lock = LockService.getDocumentLock();
+  lock.waitLock(30000);
+  try{
+    const lastRow = sh.getLastRow();
+    const lastCol = sh.getLastColumn();
+    if(lastRow < 2) return json_(false, null, "La hoja Estudiantes no tiene datos.");
+
+    const values = sh.getRange(2,1,lastRow-1,lastCol).getValues();
+    let rowIndex = -1;
+    for(let i=0;i<values.length;i++){
+      if(normRut_(values[i][0]) === rut){ rowIndex = i + 2; break; } // sheet row
+    }
+    if(rowIndex === -1) return json_(false, null, "No se encontró el RUT en Estudiantes.");
+
+    const updates = body.updates || {};
+    // Columnas esperadas (A..G): RUT, NOMBRE, CURSO, DOMICILIO, COMUNA, CORREO, ZONA
+    const map = { nombre:2, curso:3, domicilio:4, comuna:5, email:6, zona:7 };
+    const toSet = [];
+    Object.keys(map).forEach(k=>{
+      if(updates.hasOwnProperty(k)){
+        toSet.push([rowIndex, map[k], String(updates[k] || "")]);
+      }
+    });
+
+    // Si el sheet tiene menos columnas que 7, ampliar y escribir encabezados mínimos
+    if(sh.getLastColumn() < 7){
+      const headers = sh.getRange(1,1,1,sh.getLastColumn()).getValues()[0];
+      const needed = ["RUT","NOMBRE","CURSO","DOMICILIO","COMUNA","CORREO","ZONA"];
+      for(let c=headers.length; c<needed.length; c++){
+        sh.getRange(1,c+1).setValue(needed[c]);
+      }
+    }
+
+    toSet.forEach(t=>{
+      sh.getRange(t[0], t[1]).setValue(t[2]);
+    });
+
+    return json_(true, {rut: rut, updated: Object.keys(updates)});
+  }finally{
+    lock.releaseLock();
+  }
+}
+
 
 function assignBus_(body){
   const rut = normRut_(body.rut);

@@ -51,6 +51,50 @@
             <div><div class="muted">📧 Correo</div><div id="stEmail">—</div></div>
           </div>
           <div style="height:10px"></div>
+          
+          <div style="height:10px"></div>
+          <div class="row" style="gap:10px">
+            <button class="btn" id="btnEditStudent" onclick="openEdit()">✏️ Modificar estudiante</button>
+            <button class="btn ghost" id="btnCancelEdit" style="display:none" onclick="closeEdit()">Cancelar</button>
+          </div>
+
+          <div id="editPanel" class="card" style="display:none; margin-top:12px; background: rgba(0,0,0,.16); border:1px solid rgba(255,255,255,.10)">
+            <h3 style="margin:0 0 10px 0">🧾 Editar datos del estudiante</h3>
+            <p class="muted small" style="margin-top:0">Completa o corrige información (domicilio, comuna, etc.). Se guarda en Google Sheets (hoja <code>Estudiantes</code>).</p>
+
+            <div class="two">
+              <div>
+                <label class="muted">👤 Nombre (completo)</label>
+                <input id="edNombre" placeholder="Ej: Catalina Pascal Almuna Sáez"/>
+              </div>
+              <div>
+                <label class="muted">🏫 Curso</label>
+                <input id="edCurso" placeholder="Ej: 7°B / 1°M"/>
+              </div>
+              <div>
+                <label class="muted">📍 Domicilio</label>
+                <input id="edDom" placeholder="Dirección y número"/>
+              </div>
+              <div>
+                <label class="muted">🏙️ Comuna</label>
+                <input id="edComuna" placeholder="Comuna"/>
+              </div>
+              <div>
+                <label class="muted">🗺️ Zona</label>
+                <input id="edZona" placeholder="Zona / sector"/>
+              </div>
+              <div>
+                <label class="muted">📧 Correo</label>
+                <input id="edEmail" type="email" placeholder="correo@..."/>
+              </div>
+            </div>
+
+            <div style="height:10px"></div>
+            <div class="row" style="gap:10px">
+              <button class="btn" onclick="saveEdit()">💾 Guardar cambios</button>
+            </div>
+          </div>
+
           <div class="badge" id="stStatus">Estado: —</div>
         </div>
       </div>
@@ -96,6 +140,51 @@
   <script>
     const user = TE_AUTH.require();
     let currentStudent = null;
+    let editing = false;
+
+    function openEdit(){
+      if(!currentStudent) return TE.toast("Primero busca un estudiante.", "warn");
+      editing = true;
+      document.getElementById("editPanel").style.display = "block";
+      document.getElementById("btnCancelEdit").style.display = "inline-flex";
+      // Prefill
+      document.getElementById("edNombre").value = currentStudent.nombre || "";
+      document.getElementById("edCurso").value = currentStudent.curso || "";
+      document.getElementById("edDom").value = currentStudent.domicilio || "";
+      document.getElementById("edComuna").value = currentStudent.comuna || "";
+      document.getElementById("edZona").value = currentStudent.zona || "";
+      document.getElementById("edEmail").value = currentStudent.email || "";
+    }
+
+    function closeEdit(){
+      editing = false;
+      document.getElementById("editPanel").style.display = "none";
+      document.getElementById("btnCancelEdit").style.display = "none";
+    }
+
+    async function saveEdit(){
+      if(!currentStudent) return TE.toast("Primero busca un estudiante.", "warn");
+      try{
+        const updates = {
+          nombre: document.getElementById("edNombre").value.trim(),
+          curso: document.getElementById("edCurso").value.trim(),
+          domicilio: document.getElementById("edDom").value.trim(),
+          comuna: document.getElementById("edComuna").value.trim(),
+          zona: document.getElementById("edZona").value.trim(),
+          email: document.getElementById("edEmail").value.trim()
+        };
+        // No enviar campos vacíos si quieres conservar lo anterior
+        // (pero permitimos vaciar si el usuario borra intencionalmente)
+        await TE_API.call("updateStudent", { email: user.email, rut: currentStudent.rut, updates });
+        TE.toast("✅ Estudiante actualizado.", "ok");
+        closeEdit();
+        // recargar ficha
+        await buscar();
+      }catch(e){
+        TE.toast(e.message || "No se pudo actualizar.", "err");
+      }
+    }
+
 
     function normRut(v){
       return (v||"").toUpperCase().replace(/\s+/g,"").replace(/\./g,"");
